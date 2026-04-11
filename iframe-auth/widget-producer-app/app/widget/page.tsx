@@ -5,7 +5,8 @@
 // accept an embed token from the parent window, exchange it for a cookie-backed
 // session, then send chat requests with that session.
 
-import { useEffect, useRef, useState } from "react"
+import { notFound } from "next/navigation"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 
 type Message = { from: "user" | "bot"; text: string }
 type WidgetState = "waiting" | "authing" | "ready" | "error"
@@ -21,6 +22,12 @@ export default function WidgetPage() {
   const [input, setInput] = useState("")
   const [sending, setSending] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    if (window.self === window.top) {
+      notFound()
+    }
+  }, [])
 
   useEffect(() => {
     // The parent should not send auth data until the iframe has mounted and is listening.

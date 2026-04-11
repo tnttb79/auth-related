@@ -97,6 +97,13 @@ JWT verification only proves the token was valid when it was signed. It does not
 
 ## Local development
 
+**First time after clone:** the producer’s SQLite file `widget-producer-app/prisma/dev.db` is not in git (see [.gitignore](widget-producer-app/.gitignore)). Apply migrations so Prisma creates `dev.db`, then seed if you need demo data (see [Data model](#data-model)).
+
+```bash
+cd widget-producer-app
+npx prisma migrate dev
+```
+
 ```bash
 # Terminal 1 — widget producer (default port 3000)
 cd widget-producer-app
@@ -117,7 +124,7 @@ That is useful for learning, but it is not a production deployment model. If you
 
 ## Data model
 
-The widget producer app uses Prisma with SQLite in `widget-producer-app/prisma/dev.db`.
+The widget producer app uses Prisma with SQLite. The database file lives at `widget-producer-app/prisma/dev.db`. That file is **gitignored** so each machine keeps its own local database; migrations under `prisma/migrations/` are committed instead. After a fresh clone, run `npx prisma migrate dev` in `widget-producer-app` to create `dev.db` from those migrations.
 
 Important records:
 
