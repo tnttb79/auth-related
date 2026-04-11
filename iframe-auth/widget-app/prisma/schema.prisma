@@ -1,0 +1,38 @@
+// Widget provider database schema
+// Customer owns Chatbots; end users get Sessions scoped to a Chatbot
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./prisma/dev.db"
+}
+
+// Customer = the business / client website using the widget (owns Chatbots)
+model Customer {
+  id       String    @id @default(cuid())
+  apiKey   String    @unique
+  chatbots Chatbot[]
+}
+
+// Chatbot = belongs to a Customer; will later be scoped to answer questions about that customer's page
+model Chatbot {
+  id         String    @id @default(cuid())
+  name       String
+  customerId String
+  customer   Customer  @relation(fields: [customerId], references: [id])
+  sessions   Session[]
+}
+
+// Session = one chat session for an end user on a specific Chatbot
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  chatbotId String
+  chatbot   Chatbot  @relation(fields: [chatbotId], references: [id])
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
