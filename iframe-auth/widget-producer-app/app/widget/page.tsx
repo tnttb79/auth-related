@@ -1,6 +1,6 @@
 "use client"
 
-// Chat UI rendered by the widget origin inside a customer-owned iframe.
+// Chat UI rendered by the widget producer origin inside a widget consumer-owned iframe.
 // This page completes the browser side of the handshake: announce readiness,
 // accept an embed token from the parent window, exchange it for a cookie-backed
 // session, then send chat requests with that session.
@@ -10,7 +10,10 @@ import { useEffect, useRef, useState } from "react"
 type Message = { from: "user" | "bot"; text: string }
 type WidgetState = "waiting" | "authing" | "ready" | "error"
 // In production this would usually come from tenant configuration.
-const CUSTOMER_ORIGIN = process.env.NEXT_PUBLIC_CUSTOMER_ORIGIN ?? "http://localhost:3001"
+const CONSUMER_APP_ORIGIN =
+  process.env.NEXT_PUBLIC_CONSUMER_APP_ORIGIN ??
+  process.env.NEXT_PUBLIC_CUSTOMER_ORIGIN ??
+  "http://localhost:3001"
 
 export default function WidgetPage() {
   const [state, setState] = useState<WidgetState>("waiting")
@@ -21,11 +24,11 @@ export default function WidgetPage() {
 
   useEffect(() => {
     // The parent should not send auth data until the iframe has mounted and is listening.
-    window.parent.postMessage({ type: "READY" }, CUSTOMER_ORIGIN)
+    window.parent.postMessage({ type: "READY" }, CONSUMER_APP_ORIGIN)
 
     function handleWidgetAuth(e: MessageEvent) {
-      // Accept messages only from the configured customer origin.
-      if (e.origin !== CUSTOMER_ORIGIN) return
+      // Accept messages only from the configured widget consumer app origin.
+      if (e.origin !== CONSUMER_APP_ORIGIN) return
       if (e.data?.type !== "AUTH") return
 
       const token: string = e.data.token

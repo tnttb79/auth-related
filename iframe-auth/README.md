@@ -2,15 +2,20 @@
 
 This folder is a small technical demo of how an embeddable chat widget can authenticate inside a cross-origin iframe without exposing long-lived credentials to the browser.
 
-The setup mirrors a hosted widget product:
+## Repository layout
 
-- `widget-app` is the **widget producer app**
-- `customer-app` is the **widget consumer app**
-- the browser sits between them and has to bridge two different origins safely
+| Folder | Role |
+| --- | --- |
+| **`widget-producer-app/`** | **Widget producer app** — hosts the iframe UI (`/widget`), issues short-lived embed tokens, stores sessions in SQLite, exposes `/api/embed-token`, `/api/widget-session`, `/api/chat`. |
+| **`widget-consumer-app/`** | **Widget consumer app** — a site that embeds the producer’s iframe; keeps the producer API key on its server and proxies `GET /api/get-embed-token` to the producer. |
+
+The browser loads the consumer page, which embeds an iframe from the producer origin. Two folders ⇒ two origins in local dev (`localhost:3000` vs `localhost:3001`).
+
+> **Note:** Older copies named `widget-app/` and `customer-app/` may still appear if a process had those directories open. When nothing is using them, you can delete those legacy folders so only `widget-producer-app` and `widget-consumer-app` remain.
 
 ## Architecture overview
 
-![Architecture Overview](./architecture-overview.png)
+![Architecture overview — widget consumer vs widget producer](./architecture-overview.png)
 
 ## What this demo is proving
 
@@ -33,23 +38,23 @@ That keeps the producer API key on the consumer server and keeps the short-lived
 
 ## Actors
 
-| Actor                                | Responsibility                                                                                             |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| Widget producer app (`widget-app`)   | Owns the chat product, issues embed tokens, verifies ownership, creates sessions, and serves the iframe UI |
-| Widget consumer app (`customer-app`) | Embeds the producer iframe and requests embed tokens from its own backend using a producer API key         |
-| End user (browser)                   | Loads the widget consumer app page, hosts the iframe, and carries the widget session cookie                |
+| Actor | Responsibility |
+| --- | --- |
+| Widget producer app (`widget-producer-app`) | Owns the chat product, issues embed tokens, verifies ownership, creates sessions, and serves the iframe UI |
+| Widget consumer app (`widget-consumer-app`) | Embeds the producer iframe and requests embed tokens from its own backend using a producer API key |
+| End user (browser) | Loads the widget consumer app page, hosts the iframe, and carries the widget session cookie (for the producer origin) |
 
 ## End-to-end flow
 
-1. The browser on the widget consumer app page calls `customer-app/api/get-embed-token`.
-2. That route makes a backend-to-backend request to `widget-app/api/embed-token` with `x-api-key`.
+1. The browser on the widget consumer app page calls `widget-consumer-app/api/get-embed-token`.
+2. That route makes a backend-to-backend request to `widget-producer-app/api/embed-token` with `x-api-key`.
 3. The widget producer app verifies the API key, verifies the requested chatbot belongs to that consumer tenant, and signs a JWT with a 60-second TTL.
 4. The widget consumer app page renders the iframe.
-5. The iframe loads `widget-app/widget` and sends `READY` to the parent window.
+5. The iframe loads `widget-producer-app/widget` and sends `READY` to the parent window.
 6. The parent responds with `AUTH` and includes the embed token in a `postMessage`.
-7. The iframe posts the token to `widget-app/api/widget-session`.
+7. The iframe posts the token to `widget-producer-app/api/widget-session`.
 8. The widget producer app verifies the JWT, re-checks chatbot ownership in the database, creates a session row, and sets an HttpOnly cookie.
-9. `widget-app/api/chat` authenticates later requests by reading that cookie and loading the associated session.
+9. `widget-producer-app/api/chat` authenticates later requests by reading that cookie and loading the associated session.
 
 ## Why the flow is split this way
 
@@ -74,34 +79,35 @@ JWT verification only proves the token was valid when it was signed. It does not
 
 ## Security choices shown here
 
-| Decision                                               | Reason                                                                      |
-| ------------------------------------------------------ | --------------------------------------------------------------------------- |
-| Consumer API key usage is server-to-server only        | The browser never receives producer credentials                             |
-| Embed token expires quickly                            | Limits replay value if intercepted                                          |
-| `postMessage` checks `origin` and uses `targetOrigin`  | Prevents broad message delivery across windows                              |
-| Session cookie is `HttpOnly`                           | Frontend code cannot read or exfiltrate it directly                         |
-| `SameSite=None; Secure` in production                  | Required for cross-site iframe cookie behavior                              |
-| Development falls back to `SameSite=Lax` on plain HTTP | Browsers reject `SameSite=None` without `Secure` on localhost               |
-| Session lookup checks expiry in the database           | Expired cookies do not remain valid just because the browser still has them |
+| Decision | Reason |
+| --- | --- |
+| Consumer API key usage is server-to-server only | The browser never receives producer credentials |
+| Embed token expires quickly | Limits replay value if intercepted |
+| `postMessage` checks `origin` and uses `targetOrigin` | Prevents broad message delivery across windows |
+| Session cookie is `HttpOnly` | Frontend code cannot read or exfiltrate it directly |
+| `SameSite=None; Secure` in production | Required for cross-site iframe cookie behavior |
+| Development falls back to `SameSite=Lax` on plain HTTP | Browsers reject `SameSite=None` without `Secure` on localhost |
+| Session lookup checks expiry in the database | Expired cookies do not remain valid just because the browser still has them |
+
+## Environment variables (local)
+
+**Widget producer** (`widget-producer-app/.env.local`): `EMBED_SECRET`, `YOURCHAT_API_KEY`, `ALLOWED_EMBED_ORIGINS`, `NEXT_PUBLIC_CONSUMER_APP_ORIGIN` (origin of the consumer app for `postMessage` checks). The widget page still accepts legacy `NEXT_PUBLIC_CUSTOMER_ORIGIN` if you have not migrated yet.
+
+**Widget consumer** (`widget-consumer-app/.env.local`): `YOURCHAT_API_KEY`, `CHATBOT_ID`, `NEXT_PUBLIC_WIDGET_ORIGIN`.
 
 ## Local development
 
 ```bash
-# Terminal 1
-cd widget-app
+# Terminal 1 — widget producer (default port 3000)
+cd widget-producer-app
 npm run dev
 
-# Terminal 2
-cd customer-app
-npm run dev -- --port 3001
+# Terminal 2 — widget consumer (port 3001)
+cd widget-consumer-app
+npm run dev
 ```
 
 Open `http://localhost:3001`.
-
-The split ports simulate two origins:
-
-- widget producer app: `http://localhost:3000`
-- widget consumer app: `http://localhost:3001`
 
 ## Cookie behavior on localhost
 
@@ -111,7 +117,7 @@ That is useful for learning, but it is not a production deployment model. If you
 
 ## Data model
 
-The widget producer app uses Prisma with SQLite in `widget-app/prisma/dev.db`.
+The widget producer app uses Prisma with SQLite in `widget-producer-app/prisma/dev.db`.
 
 Important records:
 
@@ -122,7 +128,7 @@ Important records:
 Useful commands:
 
 ```bash
-cd widget-app
+cd widget-producer-app
 
 npx prisma migrate reset
 YOURCHAT_API_KEY=sk-dev-api-key-change-in-production npx prisma db seed

@@ -32,7 +32,7 @@ export async function GET() {
     return Response.json(
       {
         error:
-          "Cannot reach the widget producer app. Start widget-app (e.g. port 3000) and ensure NEXT_PUBLIC_WIDGET_ORIGIN matches.",
+          "Cannot reach the widget producer app. Start widget-producer-app (e.g. port 3000) and ensure NEXT_PUBLIC_WIDGET_ORIGIN matches.",
       },
       { status: 503 }
     )

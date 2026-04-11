@@ -29,7 +29,7 @@ async function main() {
   console.log(`  Customer id: ${customer.id}`)
   console.log(`  Chatbot  id: ${chatbot.id}  name: ${chatbot.name}`)
   console.log("")
-  console.log("Add to widget consumer app env (customer-app/.env.local):")
+  console.log("Add to widget consumer app env (widget-consumer-app/.env.local):")
   console.log(`  CHATBOT_ID=${chatbot.id}`)
 }
 
