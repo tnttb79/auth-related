@@ -1,20 +1,26 @@
 "use client"
 
-// Chat UI rendered by the widget producer origin inside a widget consumer-owned iframe.
-// This page completes the browser side of the handshake: announce readiness,
-// accept an embed token from the parent window, exchange it for a cookie-backed
-// session, then send chat requests with that session.
+// Chat UI rendered by the widget producer origin inside a consumer-owned iframe.
+// Completes the browser side of the handshake (READY → AUTH → session cookie),
+// then polls /api/chat/messages for owner replies. Messages are persisted on the
+// producer, so refresh still shows the ongoing thread (until the tab closes).
 
 import { notFound } from "next/navigation"
-import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 
-type Message = { from: "user" | "bot"; text: string }
+type Message = {
+  id: string
+  role: "visitor" | "owner"
+  body: string
+  createdAt: string
+}
 type WidgetState = "waiting" | "authing" | "ready" | "error"
-// In production this would usually come from tenant configuration.
+
 const CONSUMER_APP_ORIGIN =
   process.env.NEXT_PUBLIC_CONSUMER_APP_ORIGIN ??
   process.env.NEXT_PUBLIC_CUSTOMER_ORIGIN ??
   "http://localhost:3001"
+const POLL_INTERVAL_MS = 2000
 
 export default function WidgetPage() {
   const [state, setState] = useState<WidgetState>("waiting")
@@ -22,6 +28,7 @@ export default function WidgetPage() {
   const [input, setInput] = useState("")
   const [sending, setSending] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const lastSeenAtRef = useRef<string>(new Date(0).toISOString())
 
   useLayoutEffect(() => {
     if (window.self === window.top) {
@@ -30,11 +37,9 @@ export default function WidgetPage() {
   }, [])
 
   useEffect(() => {
-    // The parent should not send auth data until the iframe has mounted and is listening.
     window.parent.postMessage({ type: "READY" }, CONSUMER_APP_ORIGIN)
 
     function handleWidgetAuth(e: MessageEvent) {
-      // Accept messages only from the configured widget consumer app origin.
       if (e.origin !== CONSUMER_APP_ORIGIN) return
       if (e.data?.type !== "AUTH") return
 
@@ -44,7 +49,6 @@ export default function WidgetPage() {
         return
       }
 
-      // Convert the short-lived embed token into a durable HttpOnly session cookie.
       setState("authing")
       fetch("/api/widget-session", {
         method: "POST",
@@ -62,6 +66,49 @@ export default function WidgetPage() {
     return () => window.removeEventListener("message", handleWidgetAuth)
   }, [])
 
+  // Merge new messages into state while preserving client-ordering and deduping by id.
+  const mergeMessages = useCallback((incoming: Message[]) => {
+    if (incoming.length === 0) return
+    setMessages((prev) => {
+      const seen = new Set(prev.map((m) => m.id))
+      const next = [...prev]
+      for (const m of incoming) {
+        if (!seen.has(m.id)) next.push(m)
+      }
+      return next
+    })
+    const newest = incoming[incoming.length - 1]
+    if (newest && newest.createdAt > lastSeenAtRef.current) {
+      lastSeenAtRef.current = newest.createdAt
+    }
+  }, [])
+
+  // Polling loop: hits /api/chat/messages every POLL_INTERVAL_MS once auth is ready.
+  useEffect(() => {
+    if (state !== "ready") return
+
+    let cancelled = false
+    async function poll() {
+      try {
+        const res = await fetch(
+          `/api/chat/messages?since=${encodeURIComponent(lastSeenAtRef.current)}`,
+        )
+        if (!res.ok || cancelled) return
+        const data = (await res.json()) as { messages: Message[] }
+        if (!cancelled) mergeMessages(data.messages)
+      } catch {
+        // Polling is best-effort; swallow transient errors.
+      }
+    }
+
+    poll()
+    const id = window.setInterval(poll, POLL_INTERVAL_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+    }
+  }, [state, mergeMessages])
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
@@ -71,19 +118,20 @@ export default function WidgetPage() {
     if (!text || sending) return
 
     setInput("")
-    setMessages((prev) => [...prev, { from: "user", text }])
     setSending(true)
-
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text }),
       })
-      const data = await res.json()
-      setMessages((prev) => [...prev, { from: "bot", text: data.message ?? data.error }])
-    } catch {
-      setMessages((prev) => [...prev, { from: "bot", text: "Something went wrong." }])
+      if (res.ok) {
+        const data = (await res.json()) as { messageId: string; createdAt: string }
+        // Optimistically append; the next poll will dedupe it by id.
+        mergeMessages([
+          { id: data.messageId, role: "visitor", body: text, createdAt: data.createdAt },
+        ])
+      }
     } finally {
       setSending(false)
     }
@@ -102,7 +150,7 @@ export default function WidgetPage() {
   if (state === "error") {
     return (
       <div style={styles.centered}>
-        <p style={{ ...styles.statusText, color: "#c0392b" }}>
+        <p style={{ ...styles.statusText, color: "#ff6b6b" }}>
           Authentication failed. This widget is not authorized to load here.
         </p>
       </div>
@@ -117,12 +165,14 @@ export default function WidgetPage() {
         {messages.length === 0 && (
           <p style={styles.placeholder}>Send a message to start the conversation.</p>
         )}
-        {messages.map((msg, i) => (
-          <div key={i} style={msg.from === "user" ? styles.userMsg : styles.botMsg}>
-            {msg.text}
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            style={msg.role === "visitor" ? styles.visitorMsg : styles.ownerMsg}
+          >
+            {msg.body}
           </div>
         ))}
-        {/* Sentinel node used to keep the latest message in view. */}
         <div ref={messagesEndRef} />
       </div>
 
@@ -150,66 +200,75 @@ const styles: Record<string, React.CSSProperties> = {
     height: "100vh",
     fontFamily: "system-ui, sans-serif",
     fontSize: 14,
-    background: "#fff",
+    background: "#0b0b0f",
+    color: "#e5e5ec",
   },
   header: {
-    background: "#1a1a2e",
-    color: "#fff",
-    padding: "12px 16px",
+    background: "#14141b",
+    color: "#e5e5ec",
+    padding: "14px 16px",
     fontWeight: 600,
-    fontSize: 15,
+    fontSize: 14,
+    letterSpacing: 0.3,
+    borderBottom: "1px solid #1f1f2a",
   },
   messageList: {
     flex: 1,
     overflowY: "auto",
-    padding: 12,
+    padding: 14,
     display: "flex",
     flexDirection: "column",
     gap: 8,
   },
   placeholder: {
-    color: "#999",
+    color: "#7a7a8c",
     textAlign: "center",
     marginTop: 40,
+    fontSize: 13,
   },
-  userMsg: {
+  visitorMsg: {
     alignSelf: "flex-end",
-    background: "#1a1a2e",
-    color: "#fff",
-    borderRadius: "12px 12px 2px 12px",
+    background: "#b4ff39",
+    color: "#0b0b0f",
+    borderRadius: 4,
     padding: "8px 12px",
     maxWidth: "80%",
+    fontWeight: 500,
   },
-  botMsg: {
+  ownerMsg: {
     alignSelf: "flex-start",
-    background: "#f0f0f0",
-    color: "#222",
-    borderRadius: "12px 12px 12px 2px",
+    background: "#1f1f2a",
+    color: "#e5e5ec",
+    borderRadius: 4,
     padding: "8px 12px",
     maxWidth: "80%",
   },
   inputRow: {
     display: "flex",
-    borderTop: "1px solid #eee",
-    padding: 8,
+    borderTop: "1px solid #1f1f2a",
+    padding: 10,
     gap: 8,
+    background: "#14141b",
   },
   input: {
     flex: 1,
     padding: "8px 10px",
-    border: "1px solid #ddd",
-    borderRadius: 6,
+    background: "#0b0b0f",
+    border: "1px solid #1f1f2a",
+    borderRadius: 4,
     fontSize: 14,
     outline: "none",
+    color: "#e5e5ec",
   },
   button: {
     padding: "8px 14px",
-    background: "#1a1a2e",
-    color: "#fff",
+    background: "#b4ff39",
+    color: "#0b0b0f",
     border: "none",
-    borderRadius: 6,
+    borderRadius: 4,
     cursor: "pointer",
     fontSize: 14,
+    fontWeight: 600,
   },
   centered: {
     display: "flex",
@@ -217,10 +276,11 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "center",
     height: "100vh",
     fontFamily: "system-ui, sans-serif",
+    background: "#0b0b0f",
     padding: 16,
   },
   statusText: {
-    color: "#666",
+    color: "#7a7a8c",
     textAlign: "center",
   },
 }

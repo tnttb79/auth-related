@@ -1,42 +1,43 @@
-// Session persistence for the widget producer app.
-// Session rows live in SQLite and are referenced by an HttpOnly cookie.
+// Widget session persistence.
+// A WidgetSession is an anonymous, transient chat thread tied to a chatbot.
+// It is referenced from the browser by an HttpOnly cookie set without Max-Age,
+// so the browser drops it on tab close but keeps it across refreshes.
 
 import { cookies } from "next/headers"
 import { prisma } from "@/lib/db"
 
-const SESSION_TTL_HOURS = 24
-const COOKIE_NAME = "session"
+const COOKIE_NAME = "widget_session"
+const ONLINE_WINDOW_MS = 30 * 1000
 
-// Persists a new session row and returns its primary key for cookie storage.
-export async function createSession({
-  userId,
-  chatbotId,
-}: {
-  userId: string
-  chatbotId: string
-}): Promise<string> {
-  const expiresAt = new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000)
-  const session = await prisma.session.create({
-    data: { userId, chatbotId, expiresAt },
-  })
+export async function createWidgetSession(chatbotId: string): Promise<string> {
+  const session = await prisma.widgetSession.create({ data: { chatbotId } })
   return session.id
 }
 
-// Resolves the current session from the cookie and rejects missing or expired rows.
-export async function getSession() {
+// Loads the current widget session from the cookie and bumps lastSeenAt so the
+// dashboard can tell the visitor is still on the page. Returns null if the
+// cookie is missing or points to a deleted row.
+export async function getWidgetSession() {
   const cookieStore = await cookies()
   const sessionId = cookieStore.get(COOKIE_NAME)?.value
   if (!sessionId) return null
 
-  const session = await prisma.session.findUnique({
+  const session = await prisma.widgetSession.findUnique({
     where: { id: sessionId },
     include: { chatbot: true },
   })
-
   if (!session) return null
-  if (session.expiresAt < new Date()) return null
+
+  await prisma.widgetSession.update({
+    where: { id: sessionId },
+    data: { lastSeenAt: new Date() },
+  })
 
   return session
 }
 
-export { COOKIE_NAME }
+export function isSessionOnline(lastSeenAt: Date): boolean {
+  return Date.now() - lastSeenAt.getTime() < ONLINE_WINDOW_MS
+}
+
+export { COOKIE_NAME, ONLINE_WINDOW_MS }

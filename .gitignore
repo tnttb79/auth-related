@@ -2,3 +2,4 @@
 .DS_Store
 Thumbs.db
 iframe-auth\widget-producer-app\prisma\dev.db
+.vscode

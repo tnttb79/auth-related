@@ -1,5 +1,7 @@
-// Widget provider database schema
-// Customer owns Chatbots; end users get Sessions scoped to a Chatbot
+// Widget producer database schema.
+// An Owner signs into the dashboard and registers Websites.
+// Each Website auto-provisions one Chatbot and owns its ApiKeys.
+// Widget visitors get anonymous, ephemeral WidgetSessions with Messages. 
 
 generator client {
   provider = "prisma-client"
@@ -8,31 +10,88 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./prisma/dev.db"
+  url      = env("DATABASE_URL")
 }
 
-// Customer = the business / client website using the widget (owns Chatbots)
-model Customer {
-  id       String    @id @default(cuid())
-  apiKey   String    @unique
-  chatbots Chatbot[]
+// Dashboard account. Toy login: unique name, no password.
+model Owner {
+  id        String         @id @default(cuid())
+  name      String         @unique
+  createdAt DateTime       @default(now())
+  websites  Website[]
+  sessions  OwnerSession[]
 }
 
-// Chatbot = belongs to a Customer; will later be scoped to answer questions about that customer's page
-model Chatbot {
-  id         String    @id @default(cuid())
-  name       String
-  customerId String
-  customer   Customer  @relation(fields: [customerId], references: [id])
-  sessions   Session[]
-}
-
-// Session = one chat session for an end user on a specific Chatbot
-model Session {
+// Owner's dashboard login session (cookie-backed, DB-revocable).
+model OwnerSession {
   id        String   @id @default(cuid())
-  userId    String
-  chatbotId String
-  chatbot   Chatbot  @relation(fields: [chatbotId], references: [id])
+  ownerId   String
+  owner     Owner    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   expiresAt DateTime
   createdAt DateTime @default(now())
+
+  @@index([ownerId])
+}
+
+// A site the owner wants to install the widget on. Auto-creates one Chatbot.
+model Website {
+  id        String   @id @default(cuid())
+  ownerId   String
+  owner     Owner    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name      String
+  domain    String
+  createdAt DateTime @default(now())
+  chatbot   Chatbot?
+  apiKeys   ApiKey[]
+
+  @@index([ownerId])
+}
+
+// One chatbot per website for the POC.
+model Chatbot {
+  id        String          @id @default(cuid())
+  websiteId String          @unique
+  website   Website         @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  name      String
+  sessions  WidgetSession[]
+}
+
+// API key for backend-to-backend calls from the consumer site.
+// Only the sha256 hash is stored; the raw key is shown once on creation.
+model ApiKey {
+  id         String    @id @default(cuid())
+  websiteId  String
+  website    Website   @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  label      String
+  keyHash    String    @unique
+  prefix     String
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([websiteId])
+}
+
+// Transient, anonymous chat thread with a chatbot. No visitor identity.
+// lastSeenAt is bumped by widget polls/posts; used to mark online vs stale.
+model WidgetSession {
+  id         String    @id @default(cuid())
+  chatbotId  String
+  chatbot    Chatbot   @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+  lastSeenAt DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+  messages   Message[]
+
+  @@index([chatbotId, lastSeenAt])
+}
+
+model Message {
+  id        String        @id @default(cuid())
+  sessionId String
+  session   WidgetSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String // "visitor" | "owner"
+  body      String
+  createdAt DateTime      @default(now())
+
+  @@index([sessionId, createdAt])
 }

@@ -1,6 +1,14 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Dashboard palette — dark minimalist, lime accent. */
+  --bg: #0b0b0f;
+  --surface: #14141b;
+  --border: #1f1f2a;
+  --text: #e5e5ec;
+  --muted: #7a7a8c;
+  --accent: #b4ff39;
 }
 
 @media (prefers-color-scheme: dark) {

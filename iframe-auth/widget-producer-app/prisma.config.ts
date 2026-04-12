@@ -10,6 +10,6 @@ export default defineConfig({
   },
   engine: "classic",
   datasource: {
-    url: env("DATABASE_URL") ?? "file:./prisma/dev.db",
+    url: env("DATABASE_URL") ?? "file:./dev.db",
   },
 });

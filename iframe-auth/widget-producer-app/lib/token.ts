@@ -1,5 +1,6 @@
-// Signing and verification helpers for short-lived embed tokens.
-// These JWTs bootstrap the iframe session and are not meant to be stored long-term.
+// Short-lived embed token.
+// Binds an iframe load to a specific chatbot (and the API key holder's website).
+// Not a long-term credential — the iframe trades it for a session cookie.
 
 import { SignJWT, jwtVerify } from "jose"
 
@@ -12,12 +13,10 @@ function getSecret(): Uint8Array {
 }
 
 export type EmbedTokenPayload = {
-  userId: string
   chatbotId: string
-  customerId: string
+  websiteId: string
 }
 
-// Signs the bootstrap token that binds a user to a chatbot and customer.
 export async function signEmbedToken(payload: EmbedTokenPayload): Promise<string> {
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
@@ -26,7 +25,6 @@ export async function signEmbedToken(payload: EmbedTokenPayload): Promise<string
     .sign(getSecret())
 }
 
-// Verifies signature and expiry before the token is exchanged for a session cookie.
 export async function verifyEmbedToken(token: string): Promise<EmbedTokenPayload> {
   const { payload } = await jwtVerify(token, getSecret())
   return payload as unknown as EmbedTokenPayload

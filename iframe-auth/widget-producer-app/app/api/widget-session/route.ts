@@ -1,17 +1,17 @@
-// Exchanges a short-lived embed token for a server-side session.
-// The request comes from the iframe after the parent page passes auth data over postMessage.
+// Exchanges a short-lived embed token for a widget session cookie.
+// The cookie is set without Max-Age: the browser treats it as a session cookie
+// (dies on tab close, survives refresh), matching the "ephemeral chat" model.
 
 import { NextRequest } from "next/server"
 import { cookies } from "next/headers"
 import { prisma } from "@/lib/db"
 import { verifyEmbedToken } from "@/lib/token"
-import { createSession, COOKIE_NAME } from "@/lib/session"
+import { createWidgetSession, COOKIE_NAME } from "@/lib/session"
 
 export async function POST(req: NextRequest) {
-  const body = await req.json()
-  const { embedToken } = body
-
-  if (!embedToken) {
+  const body = await req.json().catch(() => null)
+  const embedToken = body?.embedToken
+  if (!embedToken || typeof embedToken !== "string") {
     return Response.json({ error: "embedToken is required" }, { status: 400 })
   }
 
@@ -22,30 +22,27 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Invalid or expired embed token" }, { status: 401 })
   }
 
-  // Re-check ownership against the database so a stale token cannot authorize a moved bot.
-  const chatbot = await prisma.chatbot.findUnique({ where: { id: payload.chatbotId } })
-  if (!chatbot) {
-    return Response.json({ error: "Chatbot not found" }, { status: 404 })
-  }
-  if (chatbot.customerId !== payload.customerId) {
-    return Response.json({ error: "Chatbot does not belong to this customer" }, { status: 403 })
+  // Re-verify that the chatbot still belongs to the website referenced in the token.
+  // JWT signature only proves the binding was valid at sign time.
+  const chatbot = await prisma.chatbot.findUnique({
+    where: { id: payload.chatbotId },
+  })
+  if (!chatbot || chatbot.websiteId !== payload.websiteId) {
+    return Response.json({ error: "Chatbot not found for this website" }, { status: 403 })
   }
 
-  const sessionId = await createSession({
-    userId: payload.userId,
-    chatbotId: payload.chatbotId,
-  })
+  const sessionId = await createWidgetSession(chatbot.id)
 
   const cookieStore = await cookies()
   const isProd = process.env.NODE_ENV === "production"
   cookieStore.set(COOKIE_NAME, sessionId, {
     httpOnly: true,
-    // Cross-site iframe cookies need SameSite=None + Secure in production.
-    // Local HTTP development cannot use that combination, so fall back to Lax.
+    // Cross-site iframes need SameSite=None + Secure; local HTTP dev falls back to Lax.
     secure: isProd,
     sameSite: isProd ? "none" : "lax",
     path: "/",
-    maxAge: 24 * 60 * 60, // 24 hours
+    // No maxAge/expires on purpose: this becomes a browser session cookie that dies
+    // when the tab closes but survives refresh.
   })
 
   return Response.json({ ok: true })
