@@ -15,7 +15,7 @@ export default function Home() {
         </p>
         <div style={styles.actions}>
           <Link href="/dashboard" style={styles.primary}>
-            Open dashboard Test
+            Open dashboard
           </Link>
         </div>
       </main>
