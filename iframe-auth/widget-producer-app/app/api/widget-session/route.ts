@@ -11,8 +11,12 @@ import { createWidgetSession, COOKIE_NAME } from "@/lib/session"
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   const embedToken = body?.embedToken
+  const senderOrigin = body?.senderOrigin
   if (!embedToken || typeof embedToken !== "string") {
     return Response.json({ error: "embedToken is required" }, { status: 400 })
+  }
+  if (!senderOrigin || typeof senderOrigin !== "string") {
+    return Response.json({ error: "senderOrigin is required" }, { status: 400 })
   }
 
   let payload
@@ -29,6 +33,22 @@ export async function POST(req: NextRequest) {
   })
   if (!chatbot || chatbot.websiteId !== payload.websiteId) {
     return Response.json({ error: "Chatbot not found for this website" }, { status: 403 })
+  }
+
+  // Validate that the embed request comes from the domain the customer registered.
+  // This replaces the old NEXT_PUBLIC_CONSUMER_APP_ORIGIN env var with per-site DB config.
+  const website = await prisma.website.findUnique({ where: { id: payload.websiteId } })
+  if (!website) {
+    return Response.json({ error: "Website not found" }, { status: 403 })
+  }
+  let senderHostname: string
+  try {
+    senderHostname = new URL(senderOrigin).hostname
+  } catch {
+    return Response.json({ error: "Invalid senderOrigin" }, { status: 400 })
+  }
+  if (senderHostname !== website.domain) {
+    return Response.json({ error: "Origin not allowed" }, { status: 403 })
   }
 
   const sessionId = await createWidgetSession(chatbot.id)

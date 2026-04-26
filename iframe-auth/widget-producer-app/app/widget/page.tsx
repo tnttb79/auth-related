@@ -16,10 +16,6 @@ type Message = {
 }
 type WidgetState = "waiting" | "authing" | "ready" | "error"
 
-const CONSUMER_APP_ORIGIN =
-  process.env.NEXT_PUBLIC_CONSUMER_APP_ORIGIN ??
-  process.env.NEXT_PUBLIC_CUSTOMER_ORIGIN ??
-  "http://localhost:3001"
 const POLL_INTERVAL_MS = 2000
 
 export default function WidgetPage() {
@@ -37,10 +33,12 @@ export default function WidgetPage() {
   }, [])
 
   useEffect(() => {
-    window.parent.postMessage({ type: "READY" }, CONSUMER_APP_ORIGIN)
+    // ancestorOrigins is browser-set and cannot be spoofed by the parent page.
+    const ancestorOrigin = window.location.ancestorOrigins?.[0] ?? ""
+    window.parent.postMessage({ type: "READY" }, ancestorOrigin || "*")
 
     function handleWidgetAuth(e: MessageEvent) {
-      if (e.origin !== CONSUMER_APP_ORIGIN) return
+      if (e.origin !== ancestorOrigin) return
       if (e.data?.type !== "AUTH") return
 
       const token: string = e.data.token
@@ -53,7 +51,7 @@ export default function WidgetPage() {
       fetch("/api/widget-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ embedToken: token }),
+        body: JSON.stringify({ embedToken: token, senderOrigin: e.origin }),
       })
         .then((res) => {
           if (!res.ok) throw new Error("Auth failed")
