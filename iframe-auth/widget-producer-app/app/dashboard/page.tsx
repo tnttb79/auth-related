@@ -74,14 +74,20 @@ export default function DashboardHome() {
             maxLength={80}
             required
           />
-          <input
-            className={styles.input}
-            placeholder="domain (e.g. cookingblog.com)"
-            value={domain}
-            onChange={(e) => setDomain(e.target.value)}
-            maxLength={253}
-            required
-          />
+          <div className={styles.fieldGroup}>
+            <input
+              className={styles.input}
+              placeholder="Site origin (e.g. cookingblog.com)"
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
+              maxLength={253}
+              required
+            />
+            <span className={styles.fieldHint}>
+              Where the widget will be embedded — hostname or full URL accepted
+              (e.g. cookingblog.com · http://localhost:3001 · myapp.onrender.com)
+            </span>
+          </div>
           <button className={styles.button} type="submit" disabled={submitting}>
             Add
           </button>
