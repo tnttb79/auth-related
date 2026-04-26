@@ -42,14 +42,33 @@ export default function HomePage() {
             iframe from the producer app.
           </p>
           <p className={styles.body}>
-            Retrieve an API key from the producer dashboard, paste it here, and
-            load the widget. For this demo, the key is held in browser memory
-            only. In a normal integration, the consumer app would keep this key
-            in its server environment, such as <code className={styles.code}>.env.local</code>.
+            Retrieve an API key from the{" "}
+            <a
+              href="https://auth-iframe-producer.onrender.com"
+              target="_blank"
+              rel="noreferrer"
+              className={styles.inlineLink}
+            >
+              producer dashboard
+            </a>
+            , paste it here, and load the widget. For this demo, the key is held
+            in browser memory only. In a normal integration, the consumer app
+            would keep this key in its server environment, such as{" "}
+            <code className={styles.code}>.env.local</code>.
           </p>
-          <Link href="/architecture" className={styles.architectureLink}>
-            View architecture
-          </Link>
+          <div className={styles.instructionActions}>
+            <a
+              href="https://auth-iframe-producer.onrender.com"
+              target="_blank"
+              rel="noreferrer"
+              className={styles.dashboardLink}
+            >
+              Open producer dashboard
+            </a>
+            <Link href="/architecture" className={styles.architectureLink}>
+              View architecture
+            </Link>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className={styles.form}>
