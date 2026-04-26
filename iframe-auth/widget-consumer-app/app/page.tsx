@@ -1,81 +1,103 @@
-// Demo widget consumer app page that embeds the producer-hosted widget.
-// The auth handshake lives in ChatWidget; this page only provides host-site UI.
+"use client"
 
+import { FormEvent, useState } from "react"
 import ChatWidget from "@/components/ChatWidget"
+import styles from "./page.module.css"
 
 export default function HomePage() {
+  const [apiKeyInput, setApiKeyInput] = useState("")
+  const [activeApiKey, setActiveApiKey] = useState<string | null>(null)
+  const [formError, setFormError] = useState<string | null>(null)
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    const trimmedApiKey = apiKeyInput.trim()
+    if (!trimmedApiKey) {
+      setFormError("Paste an API key from the dashboard before loading the chat.")
+      setActiveApiKey(null)
+      return
+    }
+
+    setFormError(null)
+    setActiveApiKey(trimmedApiKey)
+  }
+
+  function handleClear() {
+    setApiKeyInput("")
+    setActiveApiKey(null)
+    setFormError(null)
+  }
+
   return (
-    <div style={styles.layout}>
-      <main style={styles.main}>
-        <h1 style={styles.heading}>Acme Corp — Help Center</h1>
-        <p style={styles.body}>
-          Welcome to our help center. Browse the articles below or use the chat widget
-          on the right to speak with our support bot.
-        </p>
-        <div style={styles.articleList}>
-          {["Getting started", "Billing & payments", "Account settings", "API documentation"].map(
-            (title) => (
-              <div key={title} style={styles.articleCard}>
-                <strong>{title}</strong>
-                <p style={styles.articleExcerpt}>
-                  Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-                </p>
-              </div>
-            )
-          )}
+    <main className={styles.page}>
+      <div className={styles.backdrop} />
+      <section className={styles.panel}>
+        <div>
+          <p className={styles.kicker}>Consumer app demo</p>
+          <h1 className={styles.heading}>Test the embedded chat iframe</h1>
+          <p className={styles.body}>
+            This is a minimal shell for testing how a website can embed the chat
+            iframe from the producer app.
+          </p>
+          <p className={styles.body}>
+            Retrieve an API key from the producer dashboard, paste it here, and
+            load the widget. For this demo, the key is held in browser memory
+            only. In a normal integration, the consumer app would keep this key
+            in its server environment, such as <code className={styles.code}>.env.local</code>.
+          </p>
         </div>
-      </main>
 
-      <aside style={styles.widgetContainer}>
-        <ChatWidget />
-      </aside>
-    </div>
+        <form onSubmit={handleSubmit} className={styles.form}>
+          <div className={styles.formHeader}>
+            <label htmlFor="api-key" className={styles.label}>
+              Dashboard API key
+            </label>
+            <span className={styles.memoryBadge}>Memory only</span>
+          </div>
+          <input
+            id="api-key"
+            type="password"
+            value={apiKeyInput}
+            onChange={(event) => setApiKeyInput(event.target.value)}
+            placeholder="Paste dashboard API key"
+            autoComplete="off"
+            spellCheck={false}
+            className={styles.input}
+          />
+
+          {formError ? <p className={styles.error}>{formError}</p> : null}
+          {activeApiKey ? (
+            <p className={styles.status}>
+              API key loaded in memory. Refreshing the page will clear it.
+            </p>
+          ) : null}
+
+          <div className={styles.actions}>
+            <button type="submit" className={styles.primaryButton}>
+              Load chat
+            </button>
+            <button type="button" onClick={handleClear} className={styles.secondaryButton}>
+              Clear
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section className={styles.previewSection} aria-label="Embedded chat widget preview">
+        <div className={styles.previewHeader}>
+          <div>
+            <p className={styles.previewKicker}>Live preview</p>
+            <h2 className={styles.previewTitle}>Producer iframe</h2>
+          </div>
+          <span className={activeApiKey ? styles.liveBadge : styles.idleBadge}>
+            {activeApiKey ? "Connected" : "Waiting for key"}
+          </span>
+        </div>
+        <div className={styles.widgetPanel}>
+          <ChatWidget apiKey={activeApiKey} />
+        </div>
+      </section>
+    </main>
   )
-}
-
-const styles: Record<string, React.CSSProperties> = {
-  layout: {
-    display: "flex",
-    height: "100vh",
-    fontFamily: "system-ui, sans-serif",
-    background: "#f9f9f9",
-  },
-  main: {
-    flex: 1,
-    padding: "40px 48px",
-    overflowY: "auto",
-  },
-  heading: {
-    fontSize: 28,
-    fontWeight: 700,
-    marginBottom: 12,
-    color: "#1a1a2e",
-  },
-  body: {
-    color: "#555",
-    lineHeight: 1.6,
-    marginBottom: 32,
-  },
-  articleList: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-    gap: 16,
-  },
-  articleCard: {
-    background: "#fff",
-    border: "1px solid #e5e5e5",
-    borderRadius: 8,
-    padding: 20,
-  },
-  articleExcerpt: {
-    color: "#888",
-    fontSize: 13,
-    marginTop: 6,
-  },
-  widgetContainer: {
-    width: 360,
-    flexShrink: 0,
-    borderLeft: "1px solid #e5e5e5",
-    background: "#fff",
-  },
 }

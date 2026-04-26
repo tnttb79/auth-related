@@ -1,18 +1,21 @@
 // Widget consumer proxy for fetching an embed token from the producer.
-// The browser calls this route; the producer API key stays on the consumer server.
-// The producer now derives the chatbot from the API key, so the request body is empty.
+// This toy consumer app accepts an API key from the demo UI so users can test
+// keys from the dashboard without editing .env.local. Production consumers
+// should keep this key on their server instead of passing it through frontend UI.
 
-export async function GET() {
-  const apiKey = process.env.YOURCHAT_API_KEY
+import { NextRequest } from "next/server"
+
+export async function POST(req: NextRequest) {
   const widgetOrigin = process.env.NEXT_PUBLIC_WIDGET_ORIGIN ?? "http://localhost:3000"
+  const body = (await req.json().catch(() => ({}))) as { apiKey?: unknown }
+  const apiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : ""
 
   if (!apiKey) {
     return Response.json(
       {
-        error:
-          "YOURCHAT_API_KEY must be set in .env.local (create one from the producer dashboard at /dashboard).",
+        error: "Paste an API key from the dashboard before loading the chat.",
       },
-      { status: 500 },
+      { status: 400 },
     )
   }
 
