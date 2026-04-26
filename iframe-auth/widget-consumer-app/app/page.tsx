@@ -1,6 +1,7 @@
 "use client"
 
 import { FormEvent, useState } from "react"
+import Link from "next/link"
 import ChatWidget from "@/components/ChatWidget"
 import styles from "./page.module.css"
 
@@ -46,6 +47,9 @@ export default function HomePage() {
             only. In a normal integration, the consumer app would keep this key
             in its server environment, such as <code className={styles.code}>.env.local</code>.
           </p>
+          <Link href="/architecture" className={styles.architectureLink}>
+            View architecture
+          </Link>
         </div>
 
         <form onSubmit={handleSubmit} className={styles.form}>
